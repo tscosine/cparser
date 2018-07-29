@@ -18,35 +18,41 @@ class ast_node:
 			s[1].nprint(level+1)
 
 def get_expression_tree(expression):
+	print expression
 	#The num of expression is base on priority of the opt
 	exp1  = re.compile('[\d+]|\.|->|\w+\+\+|\w+--')
 	exp2  = re.compile('\+\+|--|\*|&|!|~|sizeof')
-	exp3  = re.compile('/|\*|%')
-	exp4  = re.compile('\+|-')
-	exp5  = re.compile('<<|>>')
+	exp3_1= re.compile('(.+)/([^=]{1}.*)')
+	exp3_2= re.compile('(.+)\*([^=]{1}.*)')
+	exp3_3= re.compile('(.+)%([^=]{1}.*)')
+	exp4_1= re.compile('(.*[^+]{1})\+([^=+]{1}.*)')
+	exp4_2=	re.compile('(.*[^-]{1})-([^=-]{1}.*)')
+	exp5_1= re.compile('(.+)<<([^=]{1}.*)')
+	exp5_2= re.compile('([^=]{1}.*)>>(.+)')
 	exp6_1= re.compile('(.+)>=(.+)')
-	exp6_2= re.compile('(.+)<=(.+)')
-	exp6_3= re.compile('(.+)>(.+)')
-	exp6_4= re.compile('(.+)<(.+)')
+	exp6_2= re.compile('([^<]+)<=(.+)')
+	exp6_3= re.compile('([^>]+)>([^>]+)')
+	exp6_4= re.compile('([^<]+)<([^<]+)')
 	exp7_1= re.compile('(.+)==(.+)')
 	exp7_2= re.compile('(.+)!=(.+)')
-	exp8  = re.compile('(.+)&(.+)')
+	exp8  = re.compile('([^&]+)&([^&]+)')
 	exp9  = re.compile('(.+)\^(.+)')
-	exp10 = re.compile('(.+)\|(.+)')
+	exp10 = re.compile('([^\|]+)\|([^\|]+)')
 	exp11 = re.compile('(.+)&&(.+)')
 	exp12 = re.compile('(.+)\|\|(.+)')
 	exp13 = re.compile('(.+)\?(.+):(.+)')
-	exp14_1=re.compile('(\w+)/=(\w+)')
-	exp14_2=re.compile('(\w+)\*=(\w+)')
-	exp14_3=re.compile('(\w+)%=(\w+)')
-	exp14_4=re.compile('(\w+)\+=(\w+)')
-	exp14_5=re.compile('(\w+)-=(\w+)')
-	exp14_6=re.compile('(\w+)<<=(\w+)')
-	exp14_7=re.compile('(\w+)>>=(\w+)')
-	exp14_8=re.compile('(\w+)&=(\w+)')
-	exp14_9=re.compile('(\w+)\^=(\w+)')
-	exp14_10=re.compile('(\w+)\|=(\w+)')
-	exp14_11=re.compile('(\w+)=(\w+)')
+
+	exp14_1=re.compile('(.+)/=(.+)')
+	exp14_2=re.compile('(.+)\*=(.+)')
+	exp14_3=re.compile('(.+)%=(.+)')
+	exp14_4=re.compile('(.+)\+=(.+)')
+	exp14_5=re.compile('(.+)-=(.+)')
+	exp14_6=re.compile('(.+)<<=(.+)')
+	exp14_7=re.compile('(.+)>>=(.+)')
+	exp14_8=re.compile('(.+)&=(.+)')
+	exp14_9=re.compile('(.+)\^=(.+)')
+	exp14_10=re.compile('(.+)\|=(.+)')
+	exp14_11=re.compile('(.*[^<>=]{1})=([^<>=]{1}.*)')
 
 	if re.search(exp13,expression):
 		rematch = re.search(exp13,expression)
@@ -196,6 +202,50 @@ def get_expression_tree(expression):
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
 
+	elif re.search(exp5_1,expression):
+		rematch = re.search(exp5_1,expression)
+		node = ast_node('shift',rematch.group())
+		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
+		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
+		return node
+	elif re.search(exp5_2,expression):
+		rematch = re.search(exp5_2,expression)
+		node = ast_node('shift',rematch.group())
+		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
+		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
+		return node
+
+	elif re.search(exp4_1,expression):
+		rematch = re.search(exp4_1,expression)
+		node = ast_node('add',rematch.group())
+		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
+		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
+		return node
+	elif re.search(exp4_2,expression):
+		rematch = re.search(exp4_2,expression)
+		node = ast_node('reduce',rematch.group())
+		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
+		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
+		return node
+
+	elif re.search(exp3_1,expression):
+		rematch = re.search(exp3_1,expression)
+		node = ast_node('except',rematch.group())
+		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
+		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
+		return node
+	elif re.search(exp3_2,expression):
+		rematch = re.search(exp3_2,expression)
+		node = ast_node('ride',rematch.group())
+		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
+		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
+		return node
+	elif re.search(exp3_3,expression):
+		rematch = re.search(exp3_3,expression)
+		node = ast_node('remainder',rematch.group())
+		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
+		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
+		return node
 	else:
 		if re.match('\d+',expression):
 			return ast_node('constant',expression)
@@ -239,6 +289,6 @@ def get_token(funcbody):
 
 	return tokenlist
 if __name__ == '__main__': 
-	demo = 'a<=b&&c==d?a=a|1:a=2'
+	demo = 'a%=1'
 	root = get_expression_tree(demo)
 	root.nprint()
