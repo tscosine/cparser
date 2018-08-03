@@ -37,7 +37,6 @@ class ast_node:
 			print '|-'*level+s[0]
 			s[1].nprint(level+1)
 
-
 def get_expression_tree(expression):
 	global  bracket_count
 	global  bracket_dict
@@ -129,6 +128,46 @@ def get_expression_tree(expression):
 						bracket_dict[placeholder] = get_expression_tree(expression[start[0]+1:i])
 						expression  = expression[:start[0]]+placeholder+expression[i+1:]
 					break
+
+	#变量定义
+	if re.match('(\w+\s)*\w+\s.+',expression):
+		node = ast_node('variable define','')
+		for exp in expression.split(' ')[:-2]:
+			if exp == 'struct':
+				node.add_subnode('para',ast_node('isStruct','true'))
+			elif exp == 'enum':
+				node.add_subnode('para',ast_node('isEnum','true'))
+			elif exp == 'union':
+				node.add_subnode('para',ast_node('isUnion','true'))
+			elif exp == 'unsigned':
+				node.add_subnode('para',ast_node('isUnsigned','true'))
+			elif exp == 'static':
+				node.add_subnode('para',ast_node('isStatic','true'))
+			elif exp == 'const':
+				node.add_subnode('para',ast_node('isConst','true'))
+			elif exp == 'Entern':
+				node.add_subnode('para',ast_node('isEntern','true'))
+			elif exp == 'register':
+				node.add_subnode('para',ast_node('isRegister','true'))
+
+		node.add_subnode('typename',get_expression_tree(expression.split(' ')[-2]))
+		if re.search('(\w+)\[(\d+)\]',expression.split(' ')[-1]):
+			rematch = re.search('(\w+)\[(\d+)\]',expression.split(' ')[-1])
+			node.add_subnode('para',ast_node('isArray','true'))
+			node.add_subnode('para',ast_node('ArraySize',str(rematch.group(2))))
+			node.add_subnode('variablename',ast_node('variablename',rematch.group(1)))
+		else:
+			node.add_subnode('variablename',get_expression_tree(expression.split(' ')[-1]))
+		return node
+
+	# ,并列表达式
+	if re.search(',', expression):
+		node = ast_node('parallel', '')
+		count = 0
+		for exp in expression.split(','):
+			count += 1
+			node.add_subnode('exp' + str(count), get_expression_tree(exp))
+		return node
 
 	if re.search(exp13,expression):
 		rematch = re.search(exp13,expression)
@@ -391,6 +430,7 @@ def get_expression_tree(expression):
 		node.add_subnode('exp', get_expression_tree(rematch.group(1)))
 		return node
 
+	#sizeof()
 	elif re.match('sizeof(_bracket_replace_\d+)', expression):
 		bracket_name = re.match('sizeof(_bracket_replace_\d+)', expression).group(1)
 		if bracket_dict.has_key(bracket_name):
@@ -400,12 +440,26 @@ def get_expression_tree(expression):
 		else:
 			return ast_node('variable', expression)
 
+	#funciton call
+	elif re.match('(\w+)(_bracket_replace_\d+)',expression):
+		rematch = re.match('(\w+)(_bracket_replace_\d+)',expression)
+		bracket_name = rematch.group(2)
+		if bracket_dict.has_key(bracket_name):
+			node = ast_node('function_call','')
+			node.add_subnode('function',get_expression_tree(rematch.group(1)))
+			node.add_subnode('parameters',bracket_dict[bracket_name])
+			return node
+		else:
+			return ast_node('variable', expression)
+
+	#普通括号
 	elif re.match('_bracket_replace_\d+',expression):
 		if bracket_dict.has_key(expression):
 			return bracket_dict[expression]
 		else:
 			return ast_node('variable', expression)
 
+	#强制类型转换
 	elif re.match('(_type_trans_replace_\d+)(.*)',expression):
 		rematch = re.match('(_type_trans_replace_\d+)(.*)',expression)
 		if type_trans_dict.has_key(rematch.group(1)):
@@ -414,7 +468,11 @@ def get_expression_tree(expression):
 			return node
 		else:
 			return ast_node('variable', expression)
-
+	elif re.match('break',expression):
+		return ast_node('break','')
+	elif re.match('continue',expression):
+		return ast_node('continue','')
+	#常量
 	elif re.match('\d+', expression):
 		return ast_node('constant', expression)
 
@@ -458,7 +516,7 @@ def get_token(funcbody):
 				i += 1	
 		
 		elif status == 1:
-			#读字符串
+			#读字符串""
 			if funcbody[i] == '\"':
 				print 'get token:'+token
 				print 'turn to status 0'
@@ -471,15 +529,100 @@ def get_token(funcbody):
 				print 'read str'
 				token += funcbody[i]					
 		elif status == 2:
-			#读字符串
+			#读字符串''
 			pass
 		elif status == 3:
 			#读注释
 			pass
+		elif status == 4:
+			#读条件语句段
+			pass
+		elif status == 5:
+			#for
+			pass
+		elif status == 6:
+			#while
+			pass
+		elif status == 7:
+			#switch
+			pass
 	return tokenlist
+def kill_space(block):
+	#需要重写
+	block = re.sub('\s*','',block)
+	return block
+def get_block_tree(block,blockname='root'):
+	block = kill_space(block)
+	expression = ''
+	expression_count = 0
+	root_node = ast_node(blockname,'')
+	i = 0
+	while i < len(block):
+		# print 'expression:'+expression
+		# print 'block[i]:'+block[i]
+		# print '-------------------'
+		if block[i] == '(' and expression == 'if':
+			ifnode = ast_node('if','')
+
+			condition = ''
+			i+=1
+			while i < len(block):
+				if block[i] != ')':
+					condition += block[i]
+					i+=1
+				else:
+					break
+			condition_node = get_expression_tree(condition)
+			ifnode.add_subnode('condition',condition_node)
+
+			ifblock = ''
+			i+=1
+			if block[i] == '{':
+				bracket_count = 1
+				while i < len(block):
+					i += 1
+					if block[i] == '}':
+						bracket_count-=1
+						if bracket_count == 0:
+							break
+						ifblock+=block[i]
+					elif block[i] == '{':
+						bracket_count+=1
+						ifblock+=block[i]
+					else:
+						ifblock+=block[i]
+			#单行if语句的情况，不检查本身的语法问题
+			else:
+				while i < len(block):
+					i+=1
+					if block[i] != ';':
+						ifblock+=block[i]
+					else:
+						break
+			ifblock_node = get_block_tree(ifblock,'ifbody')
+			ifnode.add_subnode('ifbody',ifblock_node)
+			root_node.add_subnode('if',ifnode)
+			i+=1
+		elif block[i] == ';':
+			print 'get expression:'+expression
+			expression_node = get_expression_tree(expression)
+			root_node.add_subnode('exp'+str(expression_count),expression_node)
+			expression = ''
+			expression_count += 1
+			i += 1
+		else:
+			expression += block[i]
+			i += 1
+	return root_node
+
+
+
 if __name__ == '__main__':
-	demo = sys.argv[1]
-	# demo = '(int)(a+b)+sizeof(c)'
-	# demo = 'a->b'
-	root = get_expression_tree(demo)
+	# demo = sys.argv[1]
+	file=open('if.c')
+	funcbody=file.read()
+	root = get_block_tree(funcbody)
 	root.nprint()
+
+	# root = get_expression_tree('spin_lock_irqsave(&lock, flags)')
+	# root.nprint()
