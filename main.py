@@ -548,7 +548,7 @@ def get_token(funcbody):
 			pass
 	return tokenlist
 def kill_space(block):
-	#需要重写
+	#需要重写,需要去除注释
 	block = re.sub('\s*','',block)
 	return block
 def get_block_tree(block,blockname='root'):
@@ -619,7 +619,7 @@ def get_block_tree(block,blockname='root'):
 
 if __name__ == '__main__':
 	# demo = sys.argv[1]
-	file=open('if.c')
+	file=open('function.c')
 	funcbody=file.read()
 	root = get_block_tree(funcbody)
 	root.nprint()
