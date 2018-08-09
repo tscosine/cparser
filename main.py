@@ -552,14 +552,14 @@ def kill_space(block):
 		if re.match('//',block[i:i+2]):
 			start = i
 			while block[i] != '\n' and i < block.__len__():
-				i+=1
+				i += 1
 			end = i
 			note_index.append((start,end))
 		elif re.match('/\*',block[i:i+2]):
 			start = i
 			while not re.match('\*/', block[i:i+2]):
-				i+=1
-			end = i+1
+				i += 1
+			end = i + 1
 			note_index.append((start,end))
 
 	#删除注释
@@ -579,13 +579,19 @@ def kill_space(block):
 				if re.match('\w|\d|&|\*',block[i-1]) and re.match('[^\w\d&\*]',block[i+1]):
 					block = block[:i]+block[i+1:]
 					finish = False
-				if re.match('[^\w\d&\*]',block[i-1]) and re.match('\w|\d|&|\*',block[i+1]):
+				elif re.match('[^\w\d&\*]',block[i-1]) and re.match('\w|\d|&|\*',block[i+1]):
 					block = block[:i] + block[i + 1:]
 					finish = False
-				if re.match('\'|\"',block[i-1]) or re.match('\"|\'',block[i+1]):
+				elif re.match('\'|\"',block[i-1]) or re.match('\"|\'',block[i+1]):
 					block = block[:i] + block[i + 1:]
 					finish = False
-				if re.match('{',block[i+1]) or re.match('}',block[i-1]):
+				elif re.match('{|}',block[i+1]) or re.match('{|}',block[i-1]):
+					block = block[:i] + block[i + 1:]
+					finish = False
+				elif re.match('\(',block[i+1]) or re.match('\)',block[i-1]):
+					block = block[:i] + block[i + 1:]
+					finish = False
+				elif re.match('\[',block[i+1]) or re.match('\]',block[i-1]):
 					block = block[:i] + block[i + 1:]
 					finish = False
 			i+=1
@@ -693,36 +699,46 @@ def get_block_tree(block,blockname='root'):
 			#单行if语句的情况，不检查本身的语法问题
 			else:
 				while i < len(block):
-					i += 1
 					ifblockbody += block[i]
 					if block[i] == ';':
 						break
+					i += 1
 				i += 1
 			ifblock_node = get_block_tree(ifblockbody,'ifbody')
 			ifnode.add_subnode('ifbody',ifblock_node)
 
 
 			#匹配else块
-			if i < block.__len__():
+			while i < block.__len__():
 				if block[i:i+7] == 'else if':
-					pass
+					i+=7
+					assert block[i] == '('
+					else_condition=block[i+1:bracket_dict[i]]
+					i=bracket_dict[i]+1
+
 				elif block[i:i+4] == 'else':
+					else_condition=None
 					i+=4
-					elseblock=''
-					if block[i] == '{':
-						#有{}
-						elsebody_end = bracket_dict[i]
-						elseblock = block[i+1:elsebody_end]
-						i = elsebody_end + 1
-					else:
-						while i < len(block):
-							i += 1
-							elseblock += block[i]
-							if block[i] == ';':
-								break
+				else:
+					i += 1
+					continue
+
+				elseblock=''
+				if block[i] == '{':
+					#有{}
+					elsebody_end = bracket_dict[i]
+					elseblock = block[i+1:elsebody_end]
+					i = elsebody_end + 1
+				else:
+					while i < len(block):
+						elseblock += block[i]
+						if block[i] == ';':
+							break
 						i += 1
-					elseblock_node = get_block_tree(elseblock,'elsebody')
-					ifnode.add_subnode('elsebody',elseblock_node)
+				elseblock_node = get_block_tree(elseblock,'elsebody')
+				if else_condition != None:
+					elseblock_node.add_subnode('condition',get_expression_tree(else_condition))
+				ifnode.add_subnode('elsebody',elseblock_node)
 
 			root_node.add_subnode('if', ifnode)
 			expression = ''
@@ -821,13 +837,28 @@ def get_block_tree(block,blockname='root'):
 			i += 1
 	return root_node
 
+def get_func_node(funcbody):
+	print(funcbody)
+	for i in range(funcbody.__len__()):
+		if funcbody[i] == "{":
+			start = i
+			break
+	for i in range(funcbody.__len__())[::-1]:
+		if funcbody[i] == "}":
+			end = i
+			break
+	funcname = funcbody[:start]
+	funcbody = funcbody[start+1:end]
 
+	funcbodynode = get_block_tree(funcbody,'')
+	return (funcname,funcbodynode)
 
 if __name__ == '__main__':
 	# demo = sys.argv[1]
 	file=open('function.c')
 	funcbody=file.read()
 	funcbody = kill_space(funcbody)
-	print(funcbody)
-	root = get_block_tree(funcbody)
-	root.nprint()
+
+	result = get_func_node(funcbody)
+	print(result[0])
+	result[1].nprint()
