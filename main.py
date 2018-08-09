@@ -603,7 +603,7 @@ def kill_space(block):
 '''
 def get_switch_node(switch_body):
 	result = []
-	pattern1 = re.compile('case (\d+):(.*?break;)')
+	pattern1 = re.compile('case (.+?):(.*?break;)')
 	pattern2 = re.compile('default:(.*break;)')
 
 	for m in re.findall(pattern1,switch_body):
@@ -822,6 +822,7 @@ def get_block_tree(block,blockname='root'):
 			root_node.add_subnode('switch',switch_node)
 			expression = ''
 			i = switch_body_end+1
+
 		#普通语句
 		elif block[i] == ';':
 			# print('get expression:'+expression)
@@ -838,7 +839,7 @@ def get_block_tree(block,blockname='root'):
 	return root_node
 
 def get_func_node(funcbody):
-	print(funcbody)
+	# print(funcbody)
 	for i in range(funcbody.__len__()):
 		if funcbody[i] == "{":
 			start = i
@@ -860,5 +861,5 @@ if __name__ == '__main__':
 	funcbody = kill_space(funcbody)
 
 	result = get_func_node(funcbody)
-	print(result[0])
+	# print(result[0])
 	result[1].nprint()
