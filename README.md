@@ -1,9 +1,9 @@
 # cparser
 
-##Introduction
+## Introduction
 Get AST and the list of functioncall and variable from C code
 
-##AST Node
+## AST Node
 
 |节点类型|子节点(链接类型)|子节点(节点类型)|对应c表达式
 |-----|-----|-----|-----|
@@ -29,16 +29,16 @@ Get AST and the list of functioncall and variable from C code
 |catch|exception|expression|try-catch
 | |body|cblock|
 
-##Expression
+## Expression
 ...
-##AST function
-###astnode.funccall_list()
+## AST function
+### astnode.funccall_list()
 返回调用函数列表
-###astnode.variable_list()
+### astnode.variable_list()
 返回变量定义列表
-###astnode.feature()
+### astnode.feature()
 返回特征化序列
 
-##Other function
-###cparse.get_func_node(funcbody)
+## Other function
+### cparse.get_func_node(funcbody)
 返回AST根节点
