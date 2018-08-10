@@ -1,8 +1,7 @@
 # -*- coding: UTF-8 -*-
 
 import re
-import sys
-# import cppcheckdata
+
 bracket_count 	= 0
 bracket_dict  	= {}
 type_trans_count= 0
@@ -10,16 +9,6 @@ type_trans_dict = {}
 string_count    = 0
 string_dict     = {}
 CTYPE_LIST = ['short','int','long','float','double','char','void']
-class cType:
-	isArray  = False
-	isStruct = False
-	isUnion  = False
-	isEnum   = False
-	def __init__(self):
-		pass
-
-class variable:
-	pass
 
 class ast_node:
 	type = ''
@@ -30,21 +19,48 @@ class ast_node:
 		self.type=type
 		self.subnode = []
 
+	'''
+	添加子节点
+	'''
 	def add_subnode(self,linkname,subnode):
 		self.subnode.append([linkname,subnode])
 
+	'''
+	判断是否存在某子节点
+	'''
 	def has_node(self,linkname):
 		for s in self.subnode:
 			if s[0] == linkname:
 				return True
 		return False
 
+	'''
+	打印树结构
+	'''
 	def nprint(self,level=0):
 		print('|-'*level+self.type+' '+self.value)
 		for s in self.subnode:
-			print('|-'*level+''+s[0])
+			print('|-'*level+'(link)'+s[0])
 			s[1].nprint(level+1)
 
+	'''
+	返回所有函数调用的列表
+	'''
+	def funccall_list(self):
+		result = []
+		if self.type == 'function_call':
+			result.append(self.value)
+		for s in self.subnode:
+			list = s[1].funccall_list()
+			if list.__len__() > 0:
+				result += list
+		return result
+
+	'''
+	将AST特征化,返回特征列表
+	'''
+	def get_feature(self):
+		pass
 def get_expression_tree(expression):
 	global  bracket_count
 	global  bracket_dict
@@ -175,6 +191,11 @@ def get_expression_tree(expression):
 	if re.match('return (.*)',expression):
 		node = ast_node('return','')
 		exp_node = get_expression_tree(re.sub('return ','',expression))
+		node.add_subnode('exp',exp_node)
+		return node
+	if re.match('goto (.*)',expression):
+		node = ast_node('goto','')
+		exp_node = get_expression_tree(re.sub('goto ','',expression))
 		node.add_subnode('exp',exp_node)
 		return node
 	#变量定义识别
@@ -498,8 +519,8 @@ def get_expression_tree(expression):
 		rematch = re.match('(\w+)(_bracket_replace_\d+)',expression)
 		bracket_name = rematch.group(2)
 		if bracket_dict.__contains__(bracket_name):
-			node = ast_node('function_call','')
-			node.add_subnode('function',get_expression_tree(rematch.group(1)))
+			node = ast_node('function_call',rematch.group(1))
+			# node.add_subnode('function',get_expression_tree(rematch.group(1)))
 			if bracket_dict[bracket_name] != None:
 				node.add_subnode('parameters',bracket_dict[bracket_name])
 			return node
@@ -545,6 +566,8 @@ def get_expression_tree(expression):
 '''
 def kill_space(block):
 	note_index=[]
+	ifdef_pattern = re.compile('#ifdef.+\n')
+	block = re.sub(ifdef_pattern,'',block)
 	#标记注释
 	for i in range(len(block)):
 		start = 0
@@ -608,13 +631,13 @@ def get_switch_node(switch_body):
 
 	for m in re.findall(pattern1,switch_body):
 		case_node = ast_node('case','')
-		case_node.add_subnode('condition_value',ast_node('exp',m[0]))
-		case_node.add_subnode('condition_body',get_block_tree(m[1],'codeblock'))
+		case_node.add_subnode('condition',get_expression_tree(m[0]))
+		case_node.add_subnode('body',get_block_tree(m[1]))
 		result.append(case_node)
 
 	for m in re.findall(pattern2,switch_body):
-		case_node = ast_node('default', '')
-		case_node.add_subnode('body', get_block_tree(m,'codeblock'))
+		case_node = ast_node('case', 'default')
+		case_node.add_subnode('body', get_block_tree(m))
 		result.append(case_node)
 
 	return result
@@ -627,7 +650,7 @@ get_block_tree()
 	输入:代码块,代码块名
 	输出:AST根节点
 '''
-def get_block_tree(block,blockname='root'):
+def get_block_tree(block,blocktype='cblock'):
 	'''
 	生成括号对照词典，保存括号配对信息
 	'''
@@ -672,17 +695,20 @@ def get_block_tree(block,blockname='root'):
 	'''
 	expression = ''
 	expression_count = 0
-	root_node = ast_node(blockname,'')
+	root_node = ast_node(blocktype,'')
 	i = 0
+	status = 0  # 0-正常读入,1-读入字符串
 	while i < len(block):
 		# print('expression:'+expression)
 		# print('block[i]:'+block[i])
+		# print(i)
+		# print('status:',status)
 		# print('-------------------')
 
 		#if语句
-		if block[i] == '(' and expression == 'if':
+		if block[i] == '(' and expression == 'if' and status == 0:
 			#条件语句
-			ifnode = ast_node('ifnode','')
+			ifnode = ast_node('if','')
 			condition_end = bracket_dict[i]
 			condition = block[i+1:condition_end]
 			condition_node = get_expression_tree(condition)
@@ -704,9 +730,8 @@ def get_block_tree(block,blockname='root'):
 						break
 					i += 1
 				i += 1
-			ifblock_node = get_block_tree(ifblockbody,'ifbody')
+			ifblock_node = get_block_tree(ifblockbody)
 			ifnode.add_subnode('ifbody',ifblock_node)
-
 
 			#匹配else块
 			while i < block.__len__():
@@ -720,10 +745,10 @@ def get_block_tree(block,blockname='root'):
 					else_condition=None
 					i+=4
 				else:
-					i += 1
-					continue
+					break
 
 				elseblock=''
+
 				if block[i] == '{':
 					#有{}
 					elsebody_end = bracket_dict[i]
@@ -735,16 +760,18 @@ def get_block_tree(block,blockname='root'):
 						if block[i] == ';':
 							break
 						i += 1
-				elseblock_node = get_block_tree(elseblock,'elsebody')
+
+				elseblock_node = get_block_tree(elseblock,'else')
 				if else_condition != None:
 					elseblock_node.add_subnode('condition',get_expression_tree(else_condition))
 				ifnode.add_subnode('elsebody',elseblock_node)
-
 			root_node.add_subnode('if', ifnode)
 			expression = ''
 
+
+
 		#检索匹配while代码块
-		elif block[i] == '(' and re.match('\s*while',expression):
+		elif block[i] == '(' and re.match('\s*while',expression) and status == 0:
 			whilenode = ast_node('while','')
 			condition_end = bracket_dict[i]
 			condition = block[i+1:condition_end]
@@ -766,13 +793,13 @@ def get_block_tree(block,blockname='root'):
 					else:
 						break
 				i += 1
-			circle_node = get_block_tree(circlebody,'circlebody')
-			whilenode.add_subnode('circle',circle_node)
+			circle_node = get_block_tree(circlebody)
+			whilenode.add_subnode('loop',circle_node)
 			root_node.add_subnode('while',whilenode)
 			expression = ''
 
 		#检索匹配for代码块
-		elif block[i] == '(' and re.match('\s*for',expression):
+		elif block[i] == '(' and re.match('\s*for',expression) and status == 0:
 			fornode = ast_node('for', '')
 			for_end = bracket_dict[i]
 			condition = block[i+1:for_end]
@@ -800,14 +827,13 @@ def get_block_tree(block,blockname='root'):
 					else:
 						break
 				i += 1
-
-			circle_node = get_block_tree(circlebody, 'circlebody')
-			fornode.add_subnode('circle', circle_node)
+			circle_node = get_block_tree(circlebody)
+			fornode.add_subnode('loop', circle_node)
 			root_node.add_subnode('for', fornode)
 			expression = ''
 
 		#switch代码块
-		elif block[i] == '(' and expression == 'switch':
+		elif block[i] == '(' and expression == 'switch' and status == 0:
 			switch_node = ast_node('switch','')
 			switch_condition_end = bracket_dict[i]
 			switch_condition = block[i+1:switch_condition_end]
@@ -824,7 +850,7 @@ def get_block_tree(block,blockname='root'):
 			i = switch_body_end+1
 
 		#普通语句
-		elif block[i] == ';':
+		elif block[i] == ';' and status == 0:
 			# print('get expression:'+expression)
 			expression_node = get_expression_tree(expression)
 			root_node.add_subnode('exp'+str(expression_count),expression_node)
@@ -832,13 +858,28 @@ def get_block_tree(block,blockname='root'):
 			expression_count += 1
 			i += 1
 
+		elif block[i] == ':' and status ==0:
+			expression_node = ast_node('mark',expression)
+			root_node.add_subnode('mark' + str(expression_count),expression_node)
+			expression = ''
+			expression_count += 1
+			i += 1
+
 		#读入字符
 		else:
 			expression += block[i]
+			if block[i] == '\'' and status == 1:
+				status = 0
+			elif block[i] == '\'' and status == 0:
+				status = 1
+			elif block[i] == '\"' and status == 2:
+				status = 0
+			elif block[i] == '\"' and status == 0:
+				status = 2
 			i += 1
 	return root_node
 
-def get_func_node(funcbody):
+def get_func_tree(funcbody):
 	# print(funcbody)
 	for i in range(funcbody.__len__()):
 		if funcbody[i] == "{":
@@ -852,14 +893,15 @@ def get_func_node(funcbody):
 	funcbody = funcbody[start+1:end]
 
 	funcbodynode = get_block_tree(funcbody,'')
-	return (funcname,funcbodynode)
+	return funcbodynode
 
 if __name__ == '__main__':
 	# demo = sys.argv[1]
 	file=open('function.c')
 	funcbody=file.read()
 	funcbody = kill_space(funcbody)
+	# print(funcbody)
+	root = get_func_tree(funcbody)
 
-	result = get_func_node(funcbody)
-	# print(result[0])
-	result[1].nprint()
+	root.nprint()
+	print(root.funccall_list())
