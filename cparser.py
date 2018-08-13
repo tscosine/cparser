@@ -99,17 +99,23 @@ class ast_node:
 			if s[1] != None:
 				s[1].nprint(level+1)
 
+	
 	'''
 	返回所有函数调用的列表
 	'''
 	def funccall_list(self):
+		killlist=['printf','scanf','getchar','putchar','time',
+			'strcpy','strcmp','']
 		result = []
 		if self.type == 'function_call':
 			result.append(self.value)
 		for s in self.subnode:
 			if s[1] != None:
-				list = s[1].funccall_list()
-				result += list
+				flist = s[1].funccall_list()
+				result += flist
+		if result.__len__() > 0:
+			result = {}.fromkeys(result).keys()
+		result =list(filter(lambda x:x not in killlist,result))
 		return result
 
 	'''
@@ -751,21 +757,20 @@ def get_block_tree(block,blocktype='cblock'):
 	qouta2 = -1
 	qouta_dict = {}
 	for i in range(block.__len__()):
-		if block[i] == '\'' and qouta2 > 0:
-			pass
-		if block[i] == '\'' and qouta1 > 0 and not qouta2 > 0:
-			qouta_dict[qouta1] = i
-			qouta1 = -1
-		if block[i] == '\'' and not qouta1 > 0 and not qouta2 > 0:
-			qouta1 = i
-
-		if block[i] == '\"' and qouta1 > 0:
-			pass
-		if block[i] == '\"' and qouta2 > 0 and not qouta1 > 0:
-			qouta_dict[qouta2] = i
-			qouta2 = -1
-		if block[i] == '\"' and not qouta2 > 0 and not qouta1 > 0:
-			qouta2 = i
+		if block[i] == '\'':
+			if qouta1 > 0:
+				qouta_dict[qouta1] = i
+				qouta_dict[i] = qouta1
+				qouta1 = -1
+			else:
+				qouta1 = i
+		elif block[i] == '\"':
+			if qouta2 > 0:
+				qouta_dict[qouta2] = i
+				qouta_dict[i] = qouta2
+				qouta2 = -1
+			else:
+				qouta2 = i
 	'''
 	生成括号对照词典，保存括号配对信息
 	'''
@@ -775,9 +780,15 @@ def get_block_tree(block,blocktype='cblock'):
 	bracket_dict      = {} #all of theme
 	i = 0
 	while  i < len(block):
-		if block[i] == '\'' or block[i] == '\"':
-			i = qouta_dict[i] 
 
+		if block[i] == '\'' or block[i] == '\"':
+			if qouta_dict.__contains__(i):
+				i = qouta_dict[i]
+			else:
+				with open('/home/cosine/mygit/block_'+str(i),'w') as f:
+					f.write(block[i-100:i])
+					f.write('/**/')
+					f.write(block[i:i+100])
 		if block[i] == '(':
 			parenthesis_stack.append((i,'('))
 		elif block[i] == ')':
