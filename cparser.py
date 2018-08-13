@@ -14,6 +14,61 @@ class ast_node:
 	type = ''
 	value = ''
 	subnode = []
+	cblock_coding = {'cblock':1,'if':2,'else':3,'while':4,'for':5,'switch':6,'case':7,'try':8,'catch':9}
+	expression_coding = {
+		'parallel':0,
+		'assign':11,
+		'assign_or':12,
+		'assign_xor':13,
+		'assign_and':14,
+		'assign_shift_right':15,
+		'assign_shift_left':16,
+		'assign_reduce':17,
+		'assign_add':18,
+		'assign_remain':19,
+		'assign_mult':20,
+		'assign_except':21,
+		'conditional_opt':22,
+		'or':23,
+		'and':24,
+		'or_bit':25,
+		'xor':26,
+		'and_bit':27,
+		'equal':28,
+		'not_equal':29,
+		'compare':30,
+		'compare_equal':32,
+		'shift_right':34,
+		'shift_left':35,
+		'reduce':36,
+		'add':37,
+		'mult':38,
+		'except':39,
+		'remain':40,
+		'typetrans':41,
+		'++':42,
+		'--':43,
+		'address_of':44,
+		'sizeof':45,
+		'negative':46,
+		'not':47,
+		'~':48,
+		'descend':49,
+		'ascend':50,
+		'choice_member(pointer)':51,
+		'choice_member(object)':52,
+		'get_element':53,
+		'return':54,
+		'goto':55,
+		'variable_define':56,
+		'function_call':57,
+		'variable':58,
+		'break':59,
+		'continue':60,
+		'constant':61,
+		'string':62,
+		'mark':63
+	}
 	def __init__(self,type,value):
 		self.value=value
 		self.type=type
@@ -41,7 +96,8 @@ class ast_node:
 		print('|-'*level+self.type+' '+self.value)
 		for s in self.subnode:
 			print('|-'*level+'(link)'+s[0])
-			s[1].nprint(level+1)
+			if s[1] != None:
+				s[1].nprint(level+1)
 
 	'''
 	返回所有函数调用的列表
@@ -51,16 +107,32 @@ class ast_node:
 		if self.type == 'function_call':
 			result.append(self.value)
 		for s in self.subnode:
-			list = s[1].funccall_list()
-			if list.__len__() > 0:
+			if s[1] != None:
+				list = s[1].funccall_list()
 				result += list
 		return result
 
 	'''
 	将AST特征化,返回特征列表
+	前序遍历
 	'''
 	def get_feature(self):
-		pass
+		feature = [self.type,]
+		if not self.type == 'variable_define':
+			for sub in self.subnode:
+				if sub[1] != None:
+					feature += sub[1].get_feature()
+		feature_coding = []
+		for f in feature:
+			if self.cblock_coding.__contains__(f):
+				feature_coding.append(self.cblock_coding[f])
+			elif self.expression_coding.__contains__(f):
+				feature_coding.append(self.expression_coding[f])
+			else:
+				feature_coding.append(f)
+		return feature_coding
+
+
 def get_expression_tree(expression):
 	global  bracket_count
 	global  bracket_dict
@@ -74,7 +146,6 @@ def get_expression_tree(expression):
 
 	#The num of expression is base on priority of the opt
 	exp1_1= re.compile('([^\[]+)\[(.+)\]([^\]]*)')	#[],数组下标
-	exp1_2= re.compile('([^\(]*)\((.*)\)([^\)]*)')	#(),括号
 	exp1_3= re.compile('(\w+)\.(\w+)')				#.成员选择(对象)
 	exp1_4= re.compile('(\w+)->(\w+)')				#->,成员选择(指针)
 	exp1_5= re.compile('(.+)\+\+(\W|$)')			#++,后置自增
@@ -83,7 +154,6 @@ def get_expression_tree(expression):
 	exp2_1= re.compile('(\W|^)-([^-=]{1}.*)')		#-,单目运算取负
 	exp2_2= re.compile('!([^=]{1}.*)')				#!,逻辑非
 	exp2_3= re.compile('~(.+)')						#~,按位取反
-	# exp2_4= re.compile('sizeof\((.+)\)')			#sizeof()
 	exp2_5= re.compile('([^&]|^)&([^=]{1}.*)')		#&,取地址
 	exp2_6= re.compile('(\W|^)--(.+)')				#--,前置自减
 	exp2_7= re.compile('(\W|^)\+\+(.+)')			#++,前置自增
@@ -120,7 +190,6 @@ def get_expression_tree(expression):
 	exp14_9=re.compile('(.+)\^=(.+)')				#^=
 	exp14_10=re.compile('(.+)\|=(.+)')				#|=
 	exp14_11=re.compile('(.*[^<>=]{1})=([^<>=]{1}.*)')#=
-
 
 	#字符串常量替换
 	changed = True
@@ -200,7 +269,7 @@ def get_expression_tree(expression):
 		return node
 	#变量定义识别
 	if re.match('(\w+\s)*\w+\s.+',expression):
-		node = ast_node('variable define','')
+		node = ast_node('variable_define','')
 		explist = expression.split(' ')
 		while len(explist)>0:
 			exp = explist.pop()
@@ -250,64 +319,63 @@ def get_expression_tree(expression):
 		node.add_subnode('op1',get_expression_tree(rematch.group(2)))
 		node.add_subnode('op2',get_expression_tree(rematch.group(3)))
 		return node
-
 	elif re.search(exp14_1,expression):
 		rematch = re.search(exp14_1,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_except',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_2,expression):
 		rematch = re.search(exp14_2,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_mult',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_3,expression):
 		rematch = re.search(exp14_3,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_remain',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_4,expression):
 		rematch = re.search(exp14_4,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_add',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_5,expression):
 		rematch = re.search(exp14_5,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_reduce',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_6,expression):
 		rematch = re.search(exp14_6,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_shift_left',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_7,expression):
 		rematch = re.search(exp14_7,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_shift_right',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_8,expression):
 		rematch = re.search(exp14_8,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_and',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_9,expression):
 		rematch = re.search(exp14_9,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_xor',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp14_10,expression):
 		rematch = re.search(exp14_10,expression)
-		node = ast_node('assign',rematch.group())
+		node = ast_node('assign_or',rematch.group())
 		node.add_subnode('left',get_expression_tree(rematch.group(1)))
 		node.add_subnode('right',get_expression_tree(rematch.group(2)))
 		return node
@@ -320,35 +388,35 @@ def get_expression_tree(expression):
 
 	elif re.search(exp12,expression):
 		rematch = re.search(exp12,expression)
-		node = ast_node('OR',rematch.group())
+		node = ast_node('or',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
 
 	elif re.search(exp11,expression):
 		rematch = re.search(exp11, expression)
-		node = ast_node('AND', rematch.group())
+		node = ast_node('and', rematch.group())
 		node.add_subnode('exp1', get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2', get_expression_tree(rematch.group(2)))
 		return node
 
 	elif re.search(exp10,expression):
 		rematch = re.search(exp10, expression)
-		node = ast_node('OR_bit', rematch.group())
+		node = ast_node('or_bit', rematch.group())
 		node.add_subnode('exp1', get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2', get_expression_tree(rematch.group(2)))
 		return node
 
 	elif re.search(exp9,expression):
 		rematch = re.search(exp9,expression)
-		node = ast_node('XOR',rematch.group())
+		node = ast_node('xor',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
 
 	elif re.search(exp8,expression):
 		rematch = re.search(exp8,expression)
-		node = ast_node('AND_bit',rematch.group())
+		node = ast_node('and_bit',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
@@ -368,13 +436,13 @@ def get_expression_tree(expression):
 
 	elif re.search(exp6_1,expression):
 		rematch = re.search(exp6_1,expression)
-		node = ast_node('compare',rematch.group())
+		node = ast_node('compare_equal',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp6_2,expression):
 		rematch = re.search(exp6_2,expression)
-		node = ast_node('compare',rematch.group())
+		node = ast_node('compare_equal',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
@@ -393,13 +461,13 @@ def get_expression_tree(expression):
 
 	elif re.search(exp5_1,expression):
 		rematch = re.search(exp5_1,expression)
-		node = ast_node('shift',rematch.group())
+		node = ast_node('shift_left',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp5_2,expression):
 		rematch = re.search(exp5_2,expression)
-		node = ast_node('shift',rematch.group())
+		node = ast_node('shift_right',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
@@ -425,18 +493,16 @@ def get_expression_tree(expression):
 		return node
 	elif re.search(exp3_2,expression):
 		rematch = re.search(exp3_2,expression)
-		node = ast_node('ride',rematch.group())
+		node = ast_node('mult',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp3_3,expression):
 		rematch = re.search(exp3_3,expression)
-		node = ast_node('remainder',rematch.group())
+		node = ast_node('remain',rematch.group())
 		node.add_subnode('exp1',get_expression_tree(rematch.group(1)))
 		node.add_subnode('exp2',get_expression_tree(rematch.group(2)))
 		return node
-
-
 
 	elif re.search(exp2_1,expression):
 		rematch = re.search(exp2_1,expression)
@@ -445,7 +511,7 @@ def get_expression_tree(expression):
 		return node
 	elif re.search(exp2_2,expression):
 		rematch = re.search(exp2_2,expression)
-		node = ast_node('NOT',rematch.group())
+		node = ast_node('not',rematch.group())
 		node.add_subnode('exp',get_expression_tree(rematch.group(1)))
 		return node
 	elif re.search(exp2_3,expression):
@@ -455,7 +521,7 @@ def get_expression_tree(expression):
 		return node
 	elif re.search(exp2_5,expression):
 		rematch = re.search(exp2_5,expression)
-		node = ast_node('address of',rematch.group())
+		node = ast_node('address_of',rematch.group())
 		node.add_subnode('exp',get_expression_tree(rematch.group(2)))
 		return node
 	elif re.search(exp2_6,expression):
@@ -474,7 +540,11 @@ def get_expression_tree(expression):
 		node.add_subnode('type',get_expression_tree(rematch.group(2)))
 		node.add_subnode('exp',get_expression_tree(rematch.group(3)))
 		return node
-
+	# exp1_1= re.compile('([^\[]+)\[(.+)\]([^\]]*)')	#[],数组下标
+	# exp1_3= re.compile('(\w+)\.(\w+)')				#.成员选择(对象)
+	# exp1_4= re.compile('(\w+)->(\w+)')				#->,成员选择(指针)
+	# exp1_5= re.compile('(.+)\+\+(\W|$)')			#++,后置自增
+	# exp1_6= re.compile('(.+)--(\W|$)')				#--,后置自减
 	elif re.search(exp1_1,expression):
 		rematch = re.search(exp1_1, expression)
 		node = ast_node('get_element', rematch.group())
@@ -584,6 +654,12 @@ def kill_space(block):
 				i += 1
 			end = i + 1
 			note_index.append((start,end))
+		elif re.match('#',block[i]):
+			start = i
+			while block[i] != '\n' and i < block.__len__():
+				i += 1
+			end = i
+			note_index.append((start,end))
 
 	#删除注释
 	while note_index.__len__() > 0:
@@ -645,6 +721,23 @@ def get_switch_node(switch_body):
 
 
 '''
+获取下一个代码块的位置
+返回(代码块第一个字符位置,代码块最后一个字符位置.代码块之后的第一个字符位置)
+'''
+def get_next_block(block,begin,qouta_dict,bracket_dict):
+	if block[begin] == '(':
+		begin = bracket_dict[begin] + 1
+	i = begin
+	while i < len(block):
+		if block[i] == '\'' or block[i] == '\"':
+			i = qouta_dict[i]
+		elif block[i] == '{':
+			return (i+1,bracket_dict[i]-1,bracket_dict[i]+1)
+		elif block[i] == ';':
+			return (begin,i,i+1)
+		i+=1
+
+'''
 get_block_tree()
 为代码块生成AST节点
 	输入:代码块,代码块名
@@ -652,14 +745,39 @@ get_block_tree()
 '''
 def get_block_tree(block,blocktype='cblock'):
 	'''
+	Quotation mark Dict
+	'''	
+	qouta1 = -1
+	qouta2 = -1
+	qouta_dict = {}
+	for i in range(block.__len__()):
+		if block[i] == '\'' and qouta2 > 0:
+			pass
+		if block[i] == '\'' and qouta1 > 0 and not qouta2 > 0:
+			qouta_dict[qouta1] = i
+			qouta1 = -1
+		if block[i] == '\'' and not qouta1 > 0 and not qouta2 > 0:
+			qouta1 = i
+
+		if block[i] == '\"' and qouta1 > 0:
+			pass
+		if block[i] == '\"' and qouta2 > 0 and not qouta1 > 0:
+			qouta_dict[qouta2] = i
+			qouta2 = -1
+		if block[i] == '\"' and not qouta2 > 0 and not qouta1 > 0:
+			qouta2 = i
+	'''
 	生成括号对照词典，保存括号配对信息
 	'''
 	parenthesis_stack = [] #()
 	bracket_stack     = [] #[]
 	brace_stack       = [] #{}
 	bracket_dict      = {} #all of theme
-	for i in range(block.__len__()):
-		# print(block[i])
+	i = 0
+	while  i < len(block):
+		if block[i] == '\'' or block[i] == '\"':
+			i = qouta_dict[i] 
+
 		if block[i] == '(':
 			parenthesis_stack.append((i,'('))
 		elif block[i] == ')':
@@ -689,7 +807,8 @@ def get_block_tree(block,blocktype='cblock'):
 				match = brace_stack.pop()
 				bracket_dict[match[0]] = i
 				bracket_dict[i] = match[0]
-
+		i += 1
+ 
 	'''
 	开始分析
 	'''
@@ -697,16 +816,14 @@ def get_block_tree(block,blocktype='cblock'):
 	expression_count = 0
 	root_node = ast_node(blocktype,'')
 	i = 0
-	status = 0  # 0-正常读入,1-读入字符串
 	while i < len(block):
 		# print('expression:'+expression)
 		# print('block[i]:'+block[i])
 		# print(i)
-		# print('status:',status)
 		# print('-------------------')
 
 		#if语句
-		if block[i] == '(' and expression == 'if' and status == 0:
+		if block[i] == '(' and expression == 'if':
 			#条件语句
 			ifnode = ast_node('if','')
 			condition_end = bracket_dict[i]
@@ -716,20 +833,8 @@ def get_block_tree(block,blocktype='cblock'):
 			i = condition_end + 1
 
 			#if块内语句
-			ifblockbody = ''
-			#正常if语句,有{}
-			if block[i] == '{':
-				ifblock_end = bracket_dict[i]
-				ifblockbody = block[i+1:ifblock_end]
-				i = ifblock_end + 1
-			#单行if语句的情况，不检查本身的语法问题
-			else:
-				while i < len(block):
-					ifblockbody += block[i]
-					if block[i] == ';':
-						break
-					i += 1
-				i += 1
+			bstart,bend,i = get_next_block(block,i,qouta_dict,bracket_dict)
+			ifblockbody = block[bstart:bend+1]
 			ifblock_node = get_block_tree(ifblockbody)
 			ifnode.add_subnode('ifbody',ifblock_node)
 
@@ -747,19 +852,8 @@ def get_block_tree(block,blocktype='cblock'):
 				else:
 					break
 
-				elseblock=''
-
-				if block[i] == '{':
-					#有{}
-					elsebody_end = bracket_dict[i]
-					elseblock = block[i+1:elsebody_end]
-					i = elsebody_end + 1
-				else:
-					while i < len(block):
-						elseblock += block[i]
-						if block[i] == ';':
-							break
-						i += 1
+				bstart, bend, i = get_next_block(block, i, qouta_dict, bracket_dict)
+				elseblock = block[bstart:bend + 1]
 
 				elseblock_node = get_block_tree(elseblock,'else')
 				if else_condition != None:
@@ -769,9 +863,23 @@ def get_block_tree(block,blocktype='cblock'):
 			expression = ''
 
 
+		elif re.match('\s*try',expression):
+			try_node = ast_node('try','')
+			bstart,bend,i = get_next_block(block,i,qouta_dict,bracket_dict)
+			trybody = block[bstart:bend+1]
+			trybody_node = get_block_tree(trybody)
+			try_node.add_subnode('try',trybody_node)
+			if block[i:i+5] == 'catch':
+				i = i + 5
+				bstart, bend, i = get_next_block(block, i, qouta_dict, bracket_dict)
+				catchbody = block[bstart:bend + 1]
+				catchbody_node = get_block_tree(catchbody)
+				try_node.add_subnode('catch',catchbody_node)
+			root_node.add_subnode('try_catch',try_node)
+			expression = ''
 
 		#检索匹配while代码块
-		elif block[i] == '(' and re.match('\s*while',expression) and status == 0:
+		elif block[i] == '(' and re.match('\s*while',expression):
 			whilenode = ast_node('while','')
 			condition_end = bracket_dict[i]
 			condition = block[i+1:condition_end]
@@ -779,27 +887,16 @@ def get_block_tree(block,blocktype='cblock'):
 			while_condition_node = get_expression_tree(condition)
 			whilenode.add_subnode('condition',while_condition_node)
 
-			circlebody = ''
-			if block[i] == '{':
-				#有{}
-				circle_end = bracket_dict[i]
-				circlebody = block[i+1:circle_end]
-				i = circle_end + 1
-			else:
-				while i < len(block):
-					i += 1
-					if block[i] != ';':
-						circlebody += block[i]
-					else:
-						break
-				i += 1
+			bstart,bend,i = get_next_block(block,i,qouta_dict,bracket_dict)
+			circlebody = block[bstart:bend+1]#循环体
+
 			circle_node = get_block_tree(circlebody)
 			whilenode.add_subnode('loop',circle_node)
 			root_node.add_subnode('while',whilenode)
 			expression = ''
 
 		#检索匹配for代码块
-		elif block[i] == '(' and re.match('\s*for',expression) and status == 0:
+		elif block[i] == '(' and re.match('\s*for',expression):
 			fornode = ast_node('for', '')
 			for_end = bracket_dict[i]
 			condition = block[i+1:for_end]
@@ -812,28 +909,16 @@ def get_block_tree(block,blocktype='cblock'):
 			fornode.add_subnode('condition_end', for_condition_node2)
 			fornode.add_subnode('condition_iteration', for_condition_node3)
 
-			#循环体
-			circlebody = ''
-			if block[i] == '{':
-				# 有{}
-				circle_end = bracket_dict[i]
-				circlebody = block[i+1:circle_end]
-				i = circle_end + 1
-			else:
-				while i < len(block):
-					i += 1
-					if block[i] != ';':
-						circlebody += block[i]
-					else:
-						break
-				i += 1
+			bstart,bend,i = get_next_block(block,i,qouta_dict,bracket_dict)
+			circlebody = block[bstart:bend+1]#循环体
+
 			circle_node = get_block_tree(circlebody)
 			fornode.add_subnode('loop', circle_node)
 			root_node.add_subnode('for', fornode)
 			expression = ''
 
 		#switch代码块
-		elif block[i] == '(' and expression == 'switch' and status == 0:
+		elif block[i] == '(' and expression == 'switch':
 			switch_node = ast_node('switch','')
 			switch_condition_end = bracket_dict[i]
 			switch_condition = block[i+1:switch_condition_end]
@@ -850,7 +935,7 @@ def get_block_tree(block,blocktype='cblock'):
 			i = switch_body_end+1
 
 		#普通语句
-		elif block[i] == ';' and status == 0:
+		elif block[i] == ';':
 			# print('get expression:'+expression)
 			expression_node = get_expression_tree(expression)
 			root_node.add_subnode('exp'+str(expression_count),expression_node)
@@ -858,7 +943,7 @@ def get_block_tree(block,blocktype='cblock'):
 			expression_count += 1
 			i += 1
 
-		elif block[i] == ':' and status ==0:
+		elif block[i] == ':':
 			expression_node = ast_node('mark',expression)
 			root_node.add_subnode('mark' + str(expression_count),expression_node)
 			expression = ''
@@ -867,20 +952,22 @@ def get_block_tree(block,blocktype='cblock'):
 
 		#读入字符
 		else:
-			expression += block[i]
-			if block[i] == '\'' and status == 1:
-				status = 0
-			elif block[i] == '\'' and status == 0:
-				status = 1
-			elif block[i] == '\"' and status == 2:
-				status = 0
-			elif block[i] == '\"' and status == 0:
-				status = 2
-			i += 1
+			if block[i] == '\'' or block[i] == '\"':
+				expression += block[i:qouta_dict[i]+1]
+				i = qouta_dict[i] + 1
+			else:
+				expression += block[i]
+				i += 1
 	return root_node
 
+'''
+为函数体生成AST
+'''
 def get_func_tree(funcbody):
 	# print(funcbody)
+	
+	funcbody = kill_space(funcbody)
+
 	for i in range(funcbody.__len__()):
 		if funcbody[i] == "{":
 			start = i
@@ -895,13 +982,16 @@ def get_func_tree(funcbody):
 	funcbodynode = get_block_tree(funcbody,'')
 	return funcbodynode
 
+'''
+主函数
+'''
 if __name__ == '__main__':
 	# demo = sys.argv[1]
 	file=open('function.c')
 	funcbody=file.read()
 	funcbody = kill_space(funcbody)
-	# print(funcbody)
 	root = get_func_tree(funcbody)
-
 	root.nprint()
+	feature = root.get_feature()
+	print(feature)
 	print(root.funccall_list())
