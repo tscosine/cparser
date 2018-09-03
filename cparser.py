@@ -8,15 +8,18 @@ type_trans_count = 0
 type_trans_dict = {}
 string_count = 0
 string_dict = {}
-CTYPE_LIST = ['short', 'int', 'long', 'float', 'double', 'char', 'void']
+CTYPE_LIST = ['short', 'int', 'long', 'float', 'double', 'char', 'void',
+			  'short *','int *','long *','float *','double *','char *']
 
 
 class ast_node:
 	type = ''
 	value = ''
 	subnode = []
+	#节点类型编码
 	cblock_coding = {'cblock': 1, 'if': 2, 'else': 3, 'while': 4, 'for': 5, 'switch': 6, 'case': 7, 'try': 8,
 	                 'catch': 9}
+	#表达式类型编码
 	expression_coding = {
 		'parallel': 10,
 		'assign': 11,
@@ -77,41 +80,37 @@ class ast_node:
 		self.type = type
 		self.subnode = []
 
-	'''
-	添加子节点
-	'''
-
 	def add_subnode(self, linkname, subnode):
+		'''
+		添加子节点
+		'''
 		self.subnode.append([linkname, subnode])
 
-	'''
-	判断是否存在某子节点
-	'''
-
 	def has_node(self, linkname):
+		'''
+		判断是否存在某子节点
+		'''
 		for s in self.subnode:
 			if s[0] == linkname:
 				return True
 		return False
 
-	'''
-	打印树结构
-	'''
-
 	def nprint(self, level=0):
+		'''
+		打印树结构
+		'''
 		print('|-' * level + self.type + ' ' + self.value)
 		for s in self.subnode:
 			print('|-' * level + '(link)' + s[0])
 			if s[1] != None:
 				s[1].nprint(level + 1)
 
-	'''
-	返回所有函数调用的列表
-	'''
-
 	def funccall_list(self):
+		'''
+		:return:调用的函数列表
+		'''
 		killlist = ['printf', 'scanf', 'getchar', 'putchar', 'time',
-		            'strcpy', 'strcmp', '']
+		            'strcpy', 'strcmp', '']								#排除的函数
 		result = []
 		if self.type == 'function_call':
 			result.append(self.value)
@@ -124,12 +123,11 @@ class ast_node:
 		result = list(filter(lambda x: x not in killlist, result))
 		return result
 
-	'''
-	将AST特征化,返回特征列表
-	前序遍历
-	'''
-
 	def get_feature(self):
+		'''
+			将AST特征化,返回特征列表
+			return：AST前序遍历序列
+		'''
 		feature = [self.type, ]
 		if not self.type == 'variable_define':
 			for sub in self.subnode:
@@ -146,6 +144,10 @@ class ast_node:
 		return feature_coding
 
 	def get_word_seq(self):
+		'''
+			AST节点按类型统计作为特征
+			return: 返回AST词带特征
+		'''
 		feature_list = self.get_feature()
 		seq = [0]*63
 		for f in feature_list:
@@ -262,7 +264,7 @@ def get_expression_tree(expression):
 					else:
 						changed = True
 						if expression[start[0] + 1:i] in CTYPE_LIST:
-							# 强制类型转换
+								# 强制类型转换
 							placeholder = '_type_trans_replace_' + str(type_trans_count)
 							type_trans_count += 1
 							type_trans_dict[placeholder] = ast_node('trans_type', expression[start[0] + 1:i])
@@ -595,6 +597,16 @@ def get_expression_tree(expression):
 		node.add_subnode('exp', get_expression_tree(rematch.group(1)))
 		return node
 
+	# 强制类型转换
+	elif re.match('(_type_trans_replace_\d+)(.*)', expression):
+		rematch = re.match('(_type_trans_replace_\d+)(.*)', expression)
+		if type_trans_dict.__contains__(rematch.group(1)):
+			node = type_trans_dict[rematch.group(1)]
+			node.add_subnode('exp', get_expression_tree(rematch.group(2)))
+			return node
+		else:
+			return ast_node('variable', expression)
+
 	# sizeof()
 	elif re.match('sizeof(_bracket_replace_\d+)', expression):
 		bracket_name = re.match('sizeof(_bracket_replace_\d+)', expression).group(1)
@@ -630,15 +642,7 @@ def get_expression_tree(expression):
 			return string_dict[expression]
 		else:
 			return ast_node('variable', expression)
-	# 强制类型转换
-	elif re.match('(_type_trans_replace_\d+)(.*)', expression):
-		rematch = re.match('(_type_trans_replace_\d+)(.*)', expression)
-		if type_trans_dict.__contains__(rematch.group(1)):
-			node = type_trans_dict[rematch.group(1)]
-			node.add_subnode('exp', get_expression_tree(rematch.group(2)))
-			return node
-		else:
-			return ast_node('variable', expression)
+
 	elif re.match('break', expression):
 		return ast_node('break', '')
 	elif re.match('continue', expression):
@@ -754,14 +758,31 @@ def get_next_block(block, begin, qouta_dict, bracket_dict):
 	if block[begin] == '(':
 		begin = bracket_dict[begin] + 1
 	i = begin
-	while i < len(block):
-		if block[i] == '\'' or block[i] == '\"':
-			i = qouta_dict[i]
-		elif block[i] == '{':
-			return (i + 1, bracket_dict[i] - 1, bracket_dict[i] + 1)
-		elif block[i] == ';':
-			return (begin, i, i + 1)
-		i += 1
+	count = 0
+	try:
+		while i < len(block):
+			if block[i] == '\'' or block[i] == '\"':
+				i = qouta_dict[i]
+			elif block[i] == '{':
+				count += 1
+			elif block[i] == '}':
+				count -= 1
+				if count == 0:
+					return (begin+1,i-1,i+1)
+			elif block[i] == ';' and count == 0:
+				return (begin, i, i + 1)
+			i += 1
+		if count == 0:
+			return (begin,i-1,i-1)
+		else:
+			return (begin+1,i-1,i-1)
+	except BaseException as e:
+		print(e)
+		with open('/home/cosine/mygit/error_'+block[begin:begin+10],'w') as f:
+			f.write(block[:begin])
+			f.write('---------------------------')
+			f.write(block[begin:])
+		return (begin,begin,begin)
 
 def get_block_tree(block, blocktype='cblock'):
 	'''
@@ -771,7 +792,7 @@ def get_block_tree(block, blocktype='cblock'):
 		输出:AST根节点
 	'''
 	'''
-	Quotation mark Dict
+	Quotation Dict
 	'''
 	qouta1 = -1
 	qouta2 = -1
