@@ -8,9 +8,6 @@ type_trans_count = 0
 type_trans_dict = {}
 string_count = 0
 string_dict = {}
-CTYPE_LIST = ['short', 'int', 'long', 'float', 'double', 'char', 'void',
-			  'short *','int *','long *','float *','double *','char *']
-
 
 class ast_node:
 	type = ''
@@ -163,7 +160,6 @@ def get_expression_tree(expression):
 	global type_trans_dict
 	global string_dict
 	global string_count
-	global CTYPE_LIST
 
 	expression = expression.strip()  # 去除空格
 
@@ -263,7 +259,10 @@ def get_expression_tree(expression):
 						print('syntax error,extra ")"')
 					else:
 						changed = True
-						if expression[start[0] + 1:i] in CTYPE_LIST:
+						type_pattern = re.compile(
+						'(unsigned |long |register |static |extern |const |volatile |auto )*(short|int|long|float|double|char|void)( \*){0,1}')
+						if re.match(type_pattern,expression[start[0]+1:i]):
+						# if expression[start[0] + 1:i] in CTYPE_LIST:
 								# 强制类型转换
 							placeholder = '_type_trans_replace_' + str(type_trans_count)
 							type_trans_count += 1
@@ -281,14 +280,14 @@ def get_expression_tree(expression):
 					pass
 					# print('syntax error,no ( to match')
 
-	if re.match('return (.*)', expression):
+	if re.match('return(.*)', expression):
 		node = ast_node('return', '')
-		exp_node = get_expression_tree(re.sub('return ', '', expression))
+		exp_node = get_expression_tree(re.sub('return', '', expression))
 		node.add_subnode('exp', exp_node)
 		return node
-	if re.match('goto (.*)', expression):
+	if re.match('goto(.*)', expression):
 		node = ast_node('goto', '')
-		exp_node = get_expression_tree(re.sub('goto ', '', expression))
+		exp_node = get_expression_tree(re.sub('goto', '', expression))
 		node.add_subnode('exp', exp_node)
 		return node
 	# 变量定义识别
@@ -563,11 +562,6 @@ def get_expression_tree(expression):
 		node.add_subnode('type', get_expression_tree(rematch.group(2)))
 		node.add_subnode('exp', get_expression_tree(rematch.group(3)))
 		return node
-	# exp1_1= re.compile('([^\[]+)\[(.+)\]([^\]]*)')	#[],数组下标
-	# exp1_3= re.compile('(\w+)\.(\w+)')				#.成员选择(对象)
-	# exp1_4= re.compile('(\w+)->(\w+)')				#->,成员选择(指针)
-	# exp1_5= re.compile('(.+)\+\+(\W|$)')			#++,后置自增
-	# exp1_6= re.compile('(.+)--(\W|$)')				#--,后置自减
 	elif re.search(exp1_1, expression):
 		rematch = re.search(exp1_1, expression)
 		node = ast_node('get_element', rematch.group())
@@ -656,14 +650,47 @@ def get_expression_tree(expression):
 		return ast_node('variable', expression)
 
 
-'''
-去掉注释,换行符,制表符,和不必要的空格
-'''
 
-def kill_space(block):
+def kill_Macro_Definition(block):
+	'''
+	删除宏定义
+	:param block:
+	:return:
+	'''
+	block = re.sub('#\w+\n','',block)
+	# note_index = []
+	# for i in range(len(block)):
+	# 	start = 0
+	# 	end = 0
+	# 	if re.match('#', block[i]):
+	# 		start = i
+	# 		while i < block.__len__():
+	# 			i += 1
+	# 			end = i
+	# 			if block[i] == '\n':
+	# 				note_index.append((start, end))
+	# 				break
+	# 	if end == block.__len__():
+	# 		note_index.append((start,end-1))
+	# 		break
+	# while note_index.__len__() > 0:
+	# 	start, end = note_index.pop()
+	# 	block = block[:start] + block[end + 1:]
+	return block
+
+def kill_note(block):
+	'''
+	删除注释
+	:param block:
+	:return:
+	'''
 	note_index = []
+	
 	ifdef_pattern = re.compile('#ifdef.+\n')
 	block = re.sub(ifdef_pattern, '', block)
+
+	sameline_pattern = re.compile('\\\s*\n')
+	block = re.sub(sameline_pattern,'',block)
 	# 标记注释
 	for i in range(len(block)):
 		start = 0
@@ -680,20 +707,25 @@ def kill_space(block):
 				i += 1
 			end = i + 1
 			note_index.append((start, end))
-		elif re.match('#', block[i]):
-			start = i
-			while block[i] != '\n' and i < block.__len__():
-				i += 1
-			end = i
-			note_index.append((start, end))
 
 	# 删除注释
 	while note_index.__len__() > 0:
 		start, end = note_index.pop()
 		block = block[:start] + block[end + 1:]
+	
+	return block
 
+def kill_space(block):
+	'''
+	删除空格
+	:param block:
+	:return:
+	'''
 	block = re.sub('\t|\n', ' ', block)  # 换行符和制表符替换为空格
-
+	asm_pattern = re.compile('asm volatile \(.*\);')
+	block = re.sub(asm_pattern,'',block)
+	asm_pattern = re.compile('__asm__ __volatile__ \(.*\);')
+	block = re.sub(asm_pattern,'',block)
 	# 清除多余的空格
 	finish = False
 	while not finish:
@@ -721,15 +753,36 @@ def kill_space(block):
 					finish = False
 			i += 1
 
+	# macro_function_pattern = re.compile('(\w+)(\([^\(\)]*\))[^;\{]')
+	# changed = True
+	# while re.search(macro_function_pattern,block) and changed:
+	# 	changed = False
+	# 	it = re.finditer(macro_function_pattern,block)
+	# 	for match in it:
+	# 		if re.findall('\"',match.group(2)).__len__() % 2 == 0 and re.findall("\'",match.group(2)).__len__() %2 ==0:
+	# 			start,end = re.search(macro_function_pattern,block).span(0)
+	# 			block = block[:start] + block[end-1:]
+	# 			changed = True
+	# 			break
 	return block
 
-
-'''
-解析switch语句{}中的部分,返回AST节点列表
-'''
-
+def Standardization(block):
+	'''
+	标准化代码块
+	:param block:
+	:return:
+	'''
+	block = kill_note(block)			#删除注释
+	block = kill_space(block)			#删除空格
+	block = kill_Macro_Definition(block)#删除宏定义
+	return block 
 
 def get_switch_node(switch_body):
+	'''
+	解析switch语句
+	:param switch_body:switch语句
+	:return:AST节点列表
+	'''
 	result = []
 	pattern1 = re.compile('case (.+?):(.*?break;)')
 	pattern2 = re.compile('default:(.*break;)')
@@ -747,14 +800,15 @@ def get_switch_node(switch_body):
 
 	return result
 
-
-'''
-获取下一个代码块的位置
-返回(代码块第一个字符位置,代码块最后一个字符位置.代码块之后的第一个字符位置)
-'''
-
-
 def get_next_block(block, begin, qouta_dict, bracket_dict):
+	'''
+	获取下一个代码块的位置
+	:param block:		代码块
+	:param begin:		开始搜索的位置
+	:param qouta_dict:	引号跳转字典
+	:param bracket_dict:括号跳转字典
+	:return:代码块第一个字符位置,代码块最后一个字符位置.代码块之后的第一个字符位置
+	'''
 	if block[begin] == '(':
 		begin = bracket_dict[begin] + 1
 	i = begin
@@ -786,26 +840,23 @@ def get_next_block(block, begin, qouta_dict, bracket_dict):
 
 def get_block_tree(block, blocktype='cblock'):
 	'''
-	get_block_tree()
 	为代码块生成AST节点
-		输入:代码块,代码块名
-		输出:AST根节点
-	'''
-	'''
-	Quotation Dict
+	:param block:		代码块
+	:param blocktype:	代码块名
+	:return:			AST节点
 	'''
 	qouta1 = -1
 	qouta2 = -1
 	qouta_dict = {}
 	for i in range(block.__len__()):
-		if block[i] == '\'':
+		if block[i] == '\'' and block[i-1] != '\\':
 			if qouta1 > 0:
 				qouta_dict[qouta1] = i
 				qouta_dict[i] = qouta1
 				qouta1 = -1
 			else:
 				qouta1 = i
-		elif block[i] == '\"':
+		if block[i] == '\"' and block[i-1] != '\\':
 			if qouta2 > 0:
 				qouta_dict[qouta2] = i
 				qouta_dict[i] = qouta2
@@ -826,10 +877,7 @@ def get_block_tree(block, blocktype='cblock'):
 			if qouta_dict.__contains__(i):
 				i = qouta_dict[i]
 			else:
-				with open('/home/cosine/mygit/block_' + str(i), 'w') as f:
-					f.write(block[i - 100:i])
-					f.write('/**/')
-					f.write(block[i:i + 100])
+				pass
 		if block[i] == '(':
 			parenthesis_stack.append((i, '('))
 		elif block[i] == ')':
@@ -869,11 +917,6 @@ def get_block_tree(block, blocktype='cblock'):
 	root_node = ast_node(blocktype, '')
 	i = 0
 	while i < len(block):
-		# print('expression:'+expression)
-		# print('block[i]:'+block[i])
-		# print(i)
-		# print('-------------------')
-
 		# if语句
 		if block[i] == '(' and expression == 'if':
 			# 条件语句
@@ -1004,7 +1047,9 @@ def get_block_tree(block, blocktype='cblock'):
 
 		# 读入字符
 		else:
-			if block[i] == '\'' or block[i] == '\"':
+			# print(block[i:i+200])
+			# print('---------------')
+			if (block[i] == '\'' or block[i] == '\"') and block[i-1] != '\\':
 				expression += block[i:qouta_dict[i] + 1]
 				i = qouta_dict[i] + 1
 			else:
@@ -1013,16 +1058,15 @@ def get_block_tree(block, blocktype='cblock'):
 	return root_node
 
 
-'''
-为函数体生成AST
-'''
-
-
 def get_func_tree(funcbody):
-	# print(funcbody)
-
-	funcbody = kill_space(funcbody)
-
+	'''
+	为函数体生成AST
+	:param funcbody:函数体
+	:return:		AST根节点
+	'''
+	funcbody = Standardization(funcbody)
+	start = 0
+	end   = 0
 	for i in range(funcbody.__len__()):
 		if funcbody[i] == "{":
 			start = i
@@ -1048,6 +1092,7 @@ def get_funcbody(filebody,functionname):
 	status = 0
 	if type(filebody) is bytes:
 		filebody=filebody.decode('UTF-8')
+	filebody = kill_note(filebody)
 	if re.search(functionname,filebody):
 		start = re.search(functionname,filebody).start(0)
 		end   = re.search(functionname,filebody).end(0)
@@ -1069,6 +1114,8 @@ def get_funcbody(filebody,functionname):
 				if filebody[end] == '\"':
 					status = 0
 			elif status == 0:
+				if filebody[end] == ";" and count == 0:
+					return None
 				if filebody[end:end+2] == '//':
 					status = -1
 				elif filebody[end:end+2] == '/*':
